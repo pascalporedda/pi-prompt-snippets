@@ -58,8 +58,9 @@ remove that copy first. Otherwise `/snippets` and `alt+s` get registered twice.
 
 ## Snippet files
 
-Snippets live in `snippets/` next to `index.ts`. Each one is a markdown file
-with frontmatter:
+By default, snippets are loaded from the bundled `snippets/` directory next to
+`index.ts`. You can point the extension at your own directory instead (see
+below). Each snippet is a markdown file with frontmatter:
 
 ```markdown
 ---
@@ -82,20 +83,53 @@ Files without a frontmatter block or with an empty body are skipped. Pi
 re-reads the files every time you open the menu and every time you send a
 message, so edits take effect right away with no `/reload`.
 
-## Customizing snippets
+## Use your own snippets directory
 
-With a `git:` install, Pi manages the checkout. `pi update --extensions` and
-package reconciliation can reset or overwrite that checkout, so **you can lose any
-snippets you add or edit there.** To keep your own snippets, fork or clone
-this repository and install it from a local path:
+To use your own snippets, create `prompt-snippets.json` in Pi's agent
+directory. That is `~/.pi/agent/prompt-snippets.json` by default, or
+`$PI_CODING_AGENT_DIR/prompt-snippets.json` if you have set
+`PI_CODING_AGENT_DIR`:
+
+```json
+{
+  "snippetsDir": "~/pi-snippets"
+}
+```
+
+- When `snippetsDir` is set, that directory **replaces** the bundled snippets.
+  The two sets are not merged. Copy any bundled files you want to keep from
+  `snippets/` into your directory.
+- If the config file doesn't exist, or doesn't set `snippetsDir`, the bundled
+  snippets are used.
+- `snippetsDir` can be an absolute path, a path starting with `~/`, or a
+  relative path. Relative paths resolve against the directory that contains
+  `prompt-snippets.json`.
+- The config is read when a session starts, and again on `/reload`, a new
+  session, or a resumed session. Changes to snippet files in the directory
+  take effect right away, just like the bundled ones.
+- Configuration problems are reported as errors. They never silently fall
+  back to the bundled snippets. This covers:
+  - a config file that can't be read
+  - invalid JSON, or JSON that isn't an object
+  - unknown keys, such as a misspelled `snippetDir`
+  - a `snippetsDir` that is empty or not a string
+  - a configured directory that doesn't exist or isn't a directory
+
+  The extension never creates the configured directory. While the config is
+  broken, the menu shows the error instead of opening, and messages are sent
+  unchanged.
+
+Keeping your snippets outside the package means package updates can't touch
+them. Don't edit files inside a `git:` install: Pi manages that checkout, and
+`pi update --extensions` or package reconciliation can reset or overwrite it,
+so **you can lose any snippets you add or edit there.** If you want to change
+the extension code itself, fork or clone this repository and install it from
+a local path. Pi loads local packages in place without copying them:
 
 ```bash
 git clone https://github.com/pascalporedda/pi-prompt-snippets
 pi install ./pi-prompt-snippets
 ```
-
-Pi loads local packages in place without copying them, so your changes to
-`snippets/` stay put. Pull upstream changes yourself when you want them.
 
 ## Development
 
@@ -108,8 +142,10 @@ pi -e .         # load this checkout for one session
 ```
 
 The tests drive the real extension through a fake Pi API. They cover menu
-navigation, preview, toggling, prompt transformation, the reset behavior, and
-frontmatter validation for the bundled snippets.
+navigation, preview, toggling, prompt transformation, the reset behavior,
+`prompt-snippets.json` resolution and errors, and frontmatter validation for
+the bundled snippets. Each test points `PI_CODING_AGENT_DIR` at a fresh
+temporary directory, so your real Pi configuration is never read.
 
 `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui` come from Pi at
 runtime. They are declared as `peerDependencies` with a `*` range and pinned in

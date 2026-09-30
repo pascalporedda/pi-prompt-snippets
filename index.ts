@@ -3,6 +3,9 @@
  *
  * Each snippet is a markdown file with frontmatter (name, description,
  * placement, order) stored in the `snippets/` directory next to this file.
+ * Setting `snippetsDir` in `<agent dir>/prompt-snippets.json` replaces that
+ * directory with your own. The config is read at session start (and reload);
+ * snippet files are re-scanned whenever the menu opens or a message is sent.
  *
  * - Press alt+s or run /snippets to open the toggle menu (space: toggle,
  *   tab: preview, enter: apply, esc: cancel). The menu is a bordered,
@@ -18,8 +21,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { CONFIG_FILENAME, checkSnippetSource, resolveSnippetSource, type SnippetSource } from "./config.ts";
 
 interface Snippet {
 	/** Filename, e.g. "concise.md" */
@@ -32,7 +36,7 @@ interface Snippet {
 }
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
-const snippetsDir = join(extensionDir, "snippets");
+const bundledSnippetsDir = join(extensionDir, "snippets");
 const WIDGET_ID = "prompt-snippets";
 
 function parseSnippet(filename: string, raw: string): Snippet | null {
@@ -60,7 +64,7 @@ function parseSnippet(filename: string, raw: string): Snippet | null {
 }
 
 /** Load all snippets, sorted: prepend group first, append group last, each by (order, name). */
-function loadSnippets(): Snippet[] {
+function loadSnippets(snippetsDir: string): Snippet[] {
 	if (!existsSync(snippetsDir)) return [];
 	const snippets: Snippet[] = [];
 	for (const file of readdirSync(snippetsDir)) {
@@ -84,6 +88,14 @@ export default function (pi: ExtensionAPI) {
 	let snippets: Snippet[] = [];
 	// Ids of currently toggled snippets. Resets to empty after each send and at session start.
 	let enabled = new Set<string>();
+	// Snippet directory for this session. Resolved from the config file at session start.
+	let source: SnippetSource = { kind: "bundled", dir: bundledSnippetsDir };
+
+	/** Current snippets on disk, or an explanation of why the configured source is unusable. */
+	function readSnippets(): { ok: true; dir: string; snippets: Snippet[] } | { ok: false; error: string } {
+		const checked = checkSnippetSource(source);
+		return checked.ok ? { ok: true, dir: checked.dir, snippets: loadSnippets(checked.dir) } : checked;
+	}
 
 	function updateWidget(ctx: ExtensionContext) {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
@@ -113,12 +125,20 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		snippets = loadSnippets();
+		const loaded = readSnippets();
+		if (!loaded.ok) {
+			snippets = [];
+			enabled = new Set();
+			ctx.ui.notify(loaded.error, "error");
+			updateWidget(ctx);
+			return;
+		}
+		snippets = loaded.snippets;
 		// Drop toggles for snippets that no longer exist on disk.
 		enabled = new Set([...enabled].filter((id) => snippets.some((s) => s.id === id)));
 
 		if (snippets.length === 0) {
-			ctx.ui.notify(`No snippets found in ${snippetsDir}`, "warning");
+			ctx.ui.notify(`No snippets found in ${loaded.dir}`, "warning");
 			updateWidget(ctx);
 			return;
 		}
@@ -286,15 +306,25 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		enabled = new Set();
-		snippets = loadSnippets();
-		if (!existsSync(snippetsDir)) mkdirSync(snippetsDir, { recursive: true });
+		source = resolveSnippetSource({ configPath: join(getAgentDir(), CONFIG_FILENAME), bundledDir: bundledSnippetsDir });
+		const loaded = readSnippets();
+		if (loaded.ok) {
+			snippets = loaded.snippets;
+			// Only the bundled directory is ever created; a configured one must already exist.
+			if (source.kind === "bundled" && !existsSync(loaded.dir)) mkdirSync(loaded.dir, { recursive: true });
+		} else {
+			snippets = [];
+			ctx.ui.notify(loaded.error, "error");
+		}
 		updateWidget(ctx);
 	});
 
 	pi.on("input", async (event, ctx) => {
 		if (enabled.size === 0) return; // continue unchanged
 
-		snippets = loadSnippets();
+		const loaded = readSnippets();
+		snippets = loaded.ok ? loaded.snippets : [];
+		if (!loaded.ok) ctx.ui.notify(`${loaded.error}; message sent without snippets`, "error");
 		const active = snippets.filter((s) => enabled.has(s.id));
 		enabled = new Set();
 		updateWidget(ctx);

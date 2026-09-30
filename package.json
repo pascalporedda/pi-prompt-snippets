@@ -27,6 +27,7 @@
 	},
 	"files": [
 		"index.ts",
+		"config.ts",
 		"snippets",
 		"README.md",
 		"LICENSE"

@@ -1,5 +1,23 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import extension from "../index.ts";
+
+const tempDirs: string[] = [];
+process.on("exit", () => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/** Fresh temporary directory, removed when the test process exits. */
+export function makeTempDir(): string {
+	const dir = mkdtempSync(join(tmpdir(), "pi-prompt-snippets-test-"));
+	tempDirs.push(dir);
+	return dir;
+}
+
+// Never let a test read the real user's agent directory or prompt-snippets.json.
+process.env.PI_CODING_AGENT_DIR = makeTempDir();
 
 export const KEYS = {
 	up: "\x1b[A",
@@ -59,6 +77,8 @@ export interface Harness {
 	notifications: { message: string; level: string }[];
 	menus: MenuSession[];
 	ctx: FakeContext;
+	/** Isolated Pi agent directory (PI_CODING_AGENT_DIR) used by this harness. */
+	agentDir: string;
 	/** Queue the key presses for the next menu opening. */
 	queueMenu(keys: KeyName[]): MenuSession;
 	sessionStart(): Promise<void>;
@@ -71,7 +91,8 @@ const plainTheme: FakeTheme = {
 	bold: (text) => text,
 };
 
-export function createHarness(options: { mode?: string; rows?: number } = {}): Harness {
+export function createHarness(options: { mode?: string; rows?: number; agentDir?: string } = {}): Harness {
+	const agentDir = options.agentDir ?? makeTempDir();
 	const handlers = new Map<string, Handler>();
 	const commands = new Map<string, { description: string; handler: CommandHandler }>();
 	const shortcuts = new Map<string, { description: string; handler: ShortcutHandler }>();
@@ -147,8 +168,10 @@ export function createHarness(options: { mode?: string; rows?: number } = {}): H
 		notifications,
 		menus,
 		ctx,
+		agentDir,
 		queueMenu,
 		sessionStart: async () => {
+			process.env.PI_CODING_AGENT_DIR = agentDir;
 			await handler("session_start")({ type: "session_start" }, ctx);
 		},
 		openMenu: async (keys) => {
