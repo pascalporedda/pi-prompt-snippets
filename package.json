@@ -1,0 +1,52 @@
+{
+	"name": "pi-prompt-snippets",
+	"version": "0.1.0",
+	"description": "Pi extension for toggling single-purpose prompt snippets that are prepended or appended to your next message",
+	"type": "module",
+	"license": "MIT",
+	"author": "Pascal Poredda",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/pascalporedda/pi-prompt-snippets.git"
+	},
+	"homepage": "https://github.com/pascalporedda/pi-prompt-snippets#readme",
+	"bugs": {
+		"url": "https://github.com/pascalporedda/pi-prompt-snippets/issues"
+	},
+	"keywords": [
+		"pi-package",
+		"pi",
+		"pi-extension",
+		"prompt",
+		"snippets"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"files": [
+		"index.ts",
+		"snippets",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "node --test test/*.test.ts",
+		"check": "npm run typecheck && npm test"
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.99.1",
+		"@earendil-works/pi-tui": "0.99.1",
+		"@types/node": "24.19.0",
+		"typescript": "7.0.2"
+	}
+}
